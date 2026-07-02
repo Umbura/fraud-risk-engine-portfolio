@@ -1,0 +1,20 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Generated local artifacts
+data/*.csv
+data/*.parquet
+models/
+reports/*.json
+reports/*.csv
+reports/*.txt
+reports/*.log
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
