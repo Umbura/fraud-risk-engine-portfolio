@@ -42,6 +42,7 @@ It is aligned with companies and roles previously researched for the portfolio: 
 - Reason-code explanations for individual transactions.
 - Optional SHAP summary report.
 - Public credit-card fraud sample adapter for smoke benchmarking.
+- OpenML/Kaggle ULB credit-card fraud benchmark adapter.
 - FastAPI scoring endpoint:
   - `GET /health`;
   - `POST /score`.
@@ -60,7 +61,7 @@ Controls included in the MVP:
 - duplicate transaction IDs are checked;
 - synthetic-data limitation is documented in the metrics report.
 
-The next step for a stronger version is to add a public real-world benchmark dataset and compare performance against this synthetic baseline.
+The project now includes an OpenML/Kaggle ULB credit-card fraud benchmark for real-world model validation. The dataset is useful for fraud detection metrics, but its PCA-anonymized features limit business-readable explanations.
 
 ## Quickstart
 
@@ -98,6 +99,13 @@ Run the public-sample smoke benchmark:
 uv sync --extra public-data
 uv run python scripts/fetch_public_sample.py
 uv run python scripts/benchmark_public_sample.py
+```
+
+Run the real OpenML credit-card fraud benchmark:
+
+```bash
+uv run python scripts/fetch_openml_creditcard.py
+uv run python scripts/benchmark_openml_creditcard.py
 ```
 
 Start the API:
@@ -188,7 +196,24 @@ Latest local MVP result, using the synthetic holdout test set:
 | Recall | 0.8440 |
 | F1 | 0.2734 |
 
-Detailed results are documented in `docs/results_2026-07-02.md`.
+Detailed synthetic results are documented in `docs/results_2026-07-02.md`.
+
+The real OpenML benchmark writes its local report to `reports/openml_creditcard_benchmark.json`.
+
+Latest real benchmark result on OpenML/Kaggle ULB credit-card fraud:
+
+| Metric | Value |
+| --- | ---: |
+| Selected model | xgboost |
+| Dataset size | 284,807 rows |
+| Fraud base rate | 0.173% |
+| Temporal test ROC-AUC | 0.9762 |
+| Temporal test PR-AUC | 0.7609 |
+| Review rate | 0.817% |
+| Recall | 0.8462 |
+| Precision | 0.1261 |
+
+Detailed real benchmark results are documented in `docs/openml_creditcard_results_2026-07-02.md`.
 
 ## Docker
 
@@ -235,7 +260,7 @@ No external repository code is copied into this project.
 
 ## Roadmap
 
-- Add a larger real public benchmark dataset via OpenML/Kaggle when download/authentication is acceptable.
+- Add model-card notes for the OpenML/Kaggle ULB benchmark.
 - Tune XGBoost with cross-validation and class-imbalance controls.
 - Expand SHAP from global summary to per-transaction local explanations in the API.
 - Add anomaly detection baselines with PyOD.
