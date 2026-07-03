@@ -52,9 +52,13 @@ def build_preprocessor() -> ColumnTransformer:
     )
 
 
-def candidate_models(seed: int = 42, n_estimators: int = 220) -> dict[str, Pipeline]:
+def candidate_models(
+    seed: int = 42,
+    n_estimators: int = 220,
+    include_xgboost: bool = False,
+) -> dict[str, Pipeline]:
     preprocessor = build_preprocessor()
-    return {
+    models = {
         "logistic_regression": Pipeline(
             steps=[
                 ("preprocessor", preprocessor),
@@ -85,6 +89,35 @@ def candidate_models(seed: int = 42, n_estimators: int = 220) -> dict[str, Pipel
             ]
         ),
     }
+    if include_xgboost:
+        try:
+            from xgboost import XGBClassifier
+        except ImportError as exc:
+            raise RuntimeError(
+                "XGBoost support requires: uv sync --extra boosting"
+            ) from exc
+
+        models["xgboost"] = Pipeline(
+            steps=[
+                ("preprocessor", build_preprocessor()),
+                (
+                    "model",
+                    XGBClassifier(
+                        n_estimators=n_estimators,
+                        max_depth=4,
+                        learning_rate=0.06,
+                        subsample=0.9,
+                        colsample_bytree=0.9,
+                        min_child_weight=3,
+                        objective="binary:logistic",
+                        eval_metric="logloss",
+                        random_state=seed,
+                        n_jobs=-1,
+                    ),
+                ),
+            ]
+        )
+    return models
 
 
 def _probabilities(model: Pipeline, frame: pd.DataFrame) -> np.ndarray:
@@ -196,6 +229,7 @@ def train_and_evaluate(
     reports_dir: str | Path,
     seed: int = 42,
     n_estimators: int = 220,
+    include_xgboost: bool = False,
     threshold_config: ThresholdConfig | None = None,
 ) -> dict[str, Any]:
     threshold_config = threshold_config or ThresholdConfig()
@@ -224,7 +258,11 @@ def train_and_evaluate(
     )
 
     leaderboard: list[dict[str, Any]] = []
-    trained_models = candidate_models(seed=seed, n_estimators=n_estimators)
+    trained_models = candidate_models(
+        seed=seed,
+        n_estimators=n_estimators,
+        include_xgboost=include_xgboost,
+    )
 
     for name, model in trained_models.items():
         model.fit(train[FEATURE_COLUMNS], train[TARGET_COLUMN])
@@ -280,6 +318,7 @@ def train_and_evaluate(
             "test_rows": int(len(test)),
             "fraud_rate": float(df[TARGET_COLUMN].mean()),
             "threshold_config": threshold_config.__dict__,
+            "include_xgboost": include_xgboost,
         },
     }
     joblib.dump(artifact, model_path)

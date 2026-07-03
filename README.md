@@ -26,7 +26,8 @@ It is aligned with companies and roles previously researched for the portfolio: 
 - Two baseline models:
   - logistic regression;
   - random forest.
-- Model selection by validation PR-AUC.
+- Optional XGBoost model.
+- Model selection by validation operational cost, with PR-AUC and ROC-AUC reported as support metrics.
 - Threshold selection by operational cost:
   - manual review cost;
   - missed fraud loss based on transaction amount.
@@ -39,6 +40,8 @@ It is aligned with companies and roles previously researched for the portfolio: 
   - confusion matrix.
 - Feature importance report.
 - Reason-code explanations for individual transactions.
+- Optional SHAP summary report.
+- Public credit-card fraud sample adapter for smoke benchmarking.
 - FastAPI scoring endpoint:
   - `GET /health`;
   - `POST /score`.
@@ -73,6 +76,28 @@ Create the dataset, train the model, and write reports:
 uv run python scripts/create_dataset.py
 uv run python scripts/train_model.py
 uv run python scripts/run_eval.py
+```
+
+Train with XGBoost included:
+
+```bash
+uv sync --extra dev --extra api --extra boosting
+uv run python scripts/train_model.py --include-xgboost
+```
+
+Generate a SHAP summary report:
+
+```bash
+uv sync --extra explain
+uv run python scripts/write_shap_report.py --max-rows 100
+```
+
+Run the public-sample smoke benchmark:
+
+```bash
+uv sync --extra public-data
+uv run python scripts/fetch_public_sample.py
+uv run python scripts/benchmark_public_sample.py
 ```
 
 Start the API:
@@ -112,6 +137,34 @@ curl -X POST http://127.0.0.1:8000/score \
   }"
 ```
 
+Example high-risk response:
+
+```json
+{
+  "fraud_probability": 0.7863,
+  "decision": "block",
+  "review_threshold": 0.32,
+  "high_risk_threshold": 0.57,
+  "reason_codes": [
+    {
+      "feature": "amount",
+      "value": 850.0,
+      "benchmark": "p90=200.99",
+      "severity": "high",
+      "message": "Transaction amount is unusually high for the training population."
+    },
+    {
+      "feature": "device_trust_score",
+      "value": 0.18,
+      "benchmark": "p10=0.544",
+      "severity": "high",
+      "message": "Device trust score is in the lowest training decile."
+    }
+  ],
+  "model_name": "random_forest"
+}
+```
+
 ## Local Validation
 
 ```bash
@@ -136,6 +189,26 @@ Latest local MVP result, using the synthetic holdout test set:
 | F1 | 0.2734 |
 
 Detailed results are documented in `docs/results_2026-07-02.md`.
+
+## Docker
+
+Build and run the API container:
+
+```bash
+docker build -t fraudrisk-engine .
+docker run --rm -p 8000:8000 fraudrisk-engine
+```
+
+The container creates the synthetic dataset and trains the local model before starting the API. This keeps generated artifacts out of Git while still making the container runnable.
+
+## CI
+
+GitHub Actions is configured in `.github/workflows/ci.yml` to run:
+
+- dependency installation with `uv`;
+- lint with Ruff;
+- tests with Pytest;
+- a lightweight train/evaluation smoke run.
 
 ## Repository Layout
 
@@ -162,9 +235,9 @@ No external repository code is copied into this project.
 
 ## Roadmap
 
-- Add a real public benchmark dataset.
-- Add XGBoost as an optional model.
-- Add SHAP explanations as an optional extra.
+- Add a larger real public benchmark dataset via OpenML/Kaggle when download/authentication is acceptable.
+- Tune XGBoost with cross-validation and class-imbalance controls.
+- Expand SHAP from global summary to per-transaction local explanations in the API.
 - Add anomaly detection baselines with PyOD.
 - Add MLflow experiment tracking.
-- Add Dockerfile and GitHub Actions.
+- Add model cards and fairness/error analysis.

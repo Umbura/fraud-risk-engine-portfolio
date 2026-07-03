@@ -15,6 +15,7 @@ def main() -> None:
     parser.add_argument("--reports", default="reports")
     parser.add_argument("--rows", type=int, default=6000)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--include-xgboost", action="store_true")
     parser.add_argument("--review-cost", type=float, default=5.0)
     parser.add_argument("--missed-fraud-multiplier", type=float, default=1.0)
     args = parser.parse_args()
@@ -28,6 +29,7 @@ def main() -> None:
         model_path=args.model,
         reports_dir=args.reports,
         seed=args.seed,
+        include_xgboost=args.include_xgboost,
         threshold_config=ThresholdConfig(
             review_cost=args.review_cost,
             missed_fraud_multiplier=args.missed_fraud_multiplier,

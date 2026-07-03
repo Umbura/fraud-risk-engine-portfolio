@@ -21,12 +21,18 @@ api = [
   "fastapi>=0.115",
   "uvicorn[standard]>=0.30",
 ]
+boosting = [
+  "xgboost>=2.1",
+]
 dev = [
   "pytest>=8.0",
   "ruff>=0.6",
 ]
 explain = [
-  "shap>=0.46",
+  "shap>=0.48,<0.50",
+]
+public-data = [
+  "requests>=2.32",
 ]
 
 [build-system]
