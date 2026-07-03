@@ -1,126 +1,96 @@
-# FraudRisk Engine
+# FraudRisk Engine [![CI](https://github.com/Umbura/fraud-risk-engine-portfolio/actions/workflows/ci.yml/badge.svg)](https://github.com/Umbura/fraud-risk-engine-portfolio/actions/workflows/ci.yml)
 
-FraudRisk Engine is a portfolio backend for fraud, risk, and anomaly scoring in financial transactions.
+Backend for fraud-risk scoring, operational review prioritization, and transaction decision support.
 
-The MVP trains lightweight machine learning models on a reproducible synthetic dataset, selects an operational review threshold, exposes a FastAPI scoring endpoint, and returns human-readable reason codes for risky transactions.
+The system trains baseline machine learning models, selects review thresholds on validation data, exposes a FastAPI scoring endpoint, and returns decision labels for financial transactions. It includes a reproducible synthetic dataset for API demonstrations and a real OpenML/Kaggle ULB credit-card fraud benchmark for model validation.
 
-The project is intentionally designed to be reproducible without paid APIs, private data, Kaggle credentials, heavy local models, or copied code from external repositories.
+The default workflow does not require paid APIs, private datasets, Kaggle credentials, or copied external repository code.
 
-## Why This Project Exists
+## Overview
 
-This project targets entry-level and junior roles involving:
+The project separates data generation, model training, threshold selection, benchmark evaluation, API scoring, and validation reports. The backend owns the scoring contract and maps fraud probabilities to operational decisions:
 
-- fraud prevention;
-- risk and credit modeling;
-- anomaly detection;
-- Python backend APIs;
-- data science and machine learning;
-- explainable operational decision support.
+- `approve` for low-risk transactions;
+- `review` for transactions above the review threshold;
+- `block` for transactions above the high-risk threshold.
 
-It is aligned with companies and roles previously researched for the portfolio: fraud/risk teams, fintechs, data science junior roles, automation roles, and backend Python roles.
+The synthetic dataset is used for reproducible local API behavior and readable reason codes. The OpenML benchmark is used to test the modeling approach on real, highly imbalanced fraud data.
 
 ## Implemented Scope
 
 - Synthetic transaction dataset generator.
-- Train/validation/test split with stratification.
-- Two baseline models:
-  - logistic regression;
-  - random forest.
-- Optional XGBoost model.
-- Model selection by validation operational cost, with PR-AUC and ROC-AUC reported as support metrics.
-- Threshold selection by operational cost:
-  - manual review cost;
-  - missed fraud loss based on transaction amount.
-- Test metrics:
-  - ROC-AUC;
-  - PR-AUC;
-  - precision;
-  - recall;
-  - F1;
-  - confusion matrix.
-- Feature importance report.
-- Reason-code explanations for individual transactions.
+- Logistic regression, random forest, and optional XGBoost training.
+- Validation-based threshold selection.
+- Operational cost report for the synthetic dataset.
+- Real OpenML/Kaggle ULB credit-card fraud benchmark.
+- Fixed-review-budget benchmark metrics.
+- FastAPI backend with health and scoring endpoints.
+- Human-readable reason codes for synthetic transaction features.
 - Optional SHAP summary report.
-- Public credit-card fraud sample adapter for smoke benchmarking.
-- OpenML/Kaggle ULB credit-card fraud benchmark adapter.
-- FastAPI scoring endpoint:
-  - `GET /health`;
-  - `POST /score`.
-- Local test suite.
+- Dockerfile for local container execution.
+- Pytest test suite and Ruff linting.
+- GitHub Actions CI.
 
-## Safety and Anti-Overfitting Notes
+## Benchmark Results
 
-The current dataset is synthetic. This is useful for a public portfolio because it avoids private financial data, but it can make model performance look cleaner than a real fraud environment.
+Latest real benchmark: OpenML/Kaggle ULB credit-card fraud dataset.
 
-Controls included in the MVP:
+| Metric | Value |
+| --- | ---: |
+| Dataset size | 284,807 transactions |
+| Fraud cases | 492 |
+| Fraud base rate | 0.173% |
+| Split | temporal, by `Time` |
+| Selected model | XGBoost |
+| Test ROC-AUC | 0.9762 |
+| Test PR-AUC | 0.7609 |
+| Review rate | 0.817% |
+| Frauds caught | 44 / 52 |
+| Recall | 0.8462 |
+| Precision | 0.1261 |
 
-- train/validation/test split;
-- threshold selected on validation data, not test data;
-- final metrics reported only on the holdout test set;
-- target column is explicitly excluded from features;
-- duplicate transaction IDs are checked;
-- synthetic-data limitation is documented in the metrics report.
+Interpretation: at a sub-1% review rate on the temporal holdout set, the model identified 84.6% of fraud cases. Precision is low in absolute terms because the test fraud base rate is 0.122%, but the review queue is materially richer than random selection.
 
-The project now includes an OpenML/Kaggle ULB credit-card fraud benchmark for real-world model validation. The dataset is useful for fraud detection metrics, but its PCA-anonymized features limit business-readable explanations.
+Detailed benchmark results are documented in `docs/openml_creditcard_results_2026-07-02.md`.
 
-## Quickstart
+## Safety Model
 
-Install dependencies:
+The backend does not execute financial actions. It returns a risk score, a decision label, and supporting reason codes. Any production use would require downstream review, monitoring, access control, logging, and policy enforcement.
+
+Controls included in this repository:
+
+- target column excluded from features;
+- validation-based threshold selection;
+- temporal holdout evaluation for the real benchmark;
+- explicit fraud-base-rate reporting;
+- generated artifacts excluded from Git;
+- no secrets required for the default workflow.
+
+The OpenML benchmark uses anonymized PCA features (`V1` to `V28`). It is suitable for fraud-detection metrics, but not for business-readable explanations.
+
+## API
+
+Start the local API:
 
 ```bash
 uv sync --extra dev --extra api
-```
-
-Create the dataset, train the model, and write reports:
-
-```bash
 uv run python scripts/create_dataset.py
 uv run python scripts/train_model.py
-uv run python scripts/run_eval.py
-```
-
-Train with XGBoost included:
-
-```bash
-uv sync --extra dev --extra api --extra boosting
-uv run python scripts/train_model.py --include-xgboost
-```
-
-Generate a SHAP summary report:
-
-```bash
-uv sync --extra explain
-uv run python scripts/write_shap_report.py --max-rows 100
-```
-
-Run the public-sample smoke benchmark:
-
-```bash
-uv sync --extra public-data
-uv run python scripts/fetch_public_sample.py
-uv run python scripts/benchmark_public_sample.py
-```
-
-Run the real OpenML credit-card fraud benchmark:
-
-```bash
-uv run python scripts/fetch_openml_creditcard.py
-uv run python scripts/benchmark_openml_creditcard.py
-```
-
-Start the API:
-
-```bash
 uv run uvicorn fraudrisk_engine.api:app --reload
 ```
 
-Open the docs:
+Open:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-## Example Score Request
+Endpoints:
+
+- `GET /health`
+- `POST /score`
+
+Example request:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/score \
@@ -145,7 +115,7 @@ curl -X POST http://127.0.0.1:8000/score \
   }"
 ```
 
-Example high-risk response:
+Example response:
 
 ```json
 {
@@ -160,60 +130,55 @@ Example high-risk response:
       "benchmark": "p90=200.99",
       "severity": "high",
       "message": "Transaction amount is unusually high for the training population."
-    },
-    {
-      "feature": "device_trust_score",
-      "value": 0.18,
-      "benchmark": "p10=0.544",
-      "severity": "high",
-      "message": "Device trust score is in the lowest training decile."
     }
   ],
   "model_name": "random_forest"
 }
 ```
 
-## Local Validation
+## Local Commands
+
+Install dependencies:
+
+```bash
+uv sync --extra dev --extra api
+```
+
+Run tests and lint:
 
 ```bash
 uv run pytest
 uv run ruff check .
+```
+
+Train the local synthetic model:
+
+```bash
+uv run python scripts/create_dataset.py
 uv run python scripts/train_model.py
 uv run python scripts/run_eval.py
 ```
 
-Reports are generated in `reports/` and the model artifact is generated in `models/`. These files are intentionally ignored by Git because they are reproducible local outputs.
+Train with XGBoost:
 
-Latest local MVP result, using the synthetic holdout test set:
+```bash
+uv sync --extra dev --extra api --extra boosting
+uv run python scripts/train_model.py --include-xgboost
+```
 
-| Metric | Value |
-| --- | ---: |
-| Selected model | random_forest |
-| Fraud base rate | 9.08% |
-| ROC-AUC | 0.7531 |
-| PR-AUC | 0.2418 |
-| Precision | 0.1631 |
-| Recall | 0.8440 |
-| F1 | 0.2734 |
+Run the real OpenML benchmark:
 
-Detailed synthetic results are documented in `docs/results_2026-07-02.md`.
+```bash
+uv run python scripts/fetch_openml_creditcard.py
+uv run python scripts/benchmark_openml_creditcard.py --include-xgboost
+```
 
-The real OpenML benchmark writes its local report to `reports/openml_creditcard_benchmark.json`.
+Generate a SHAP report:
 
-Latest real benchmark result on OpenML/Kaggle ULB credit-card fraud:
-
-| Metric | Value |
-| --- | ---: |
-| Selected model | xgboost |
-| Dataset size | 284,807 rows |
-| Fraud base rate | 0.173% |
-| Temporal test ROC-AUC | 0.9762 |
-| Temporal test PR-AUC | 0.7609 |
-| Review rate | 0.817% |
-| Recall | 0.8462 |
-| Precision | 0.1261 |
-
-Detailed real benchmark results are documented in `docs/openml_creditcard_results_2026-07-02.md`.
+```bash
+uv sync --extra explain
+uv run python scripts/write_shap_report.py --max-rows 100
+```
 
 ## Docker
 
@@ -224,45 +189,91 @@ docker build -t fraudrisk-engine .
 docker run --rm -p 8000:8000 fraudrisk-engine
 ```
 
-The container creates the synthetic dataset and trains the local model before starting the API. This keeps generated artifacts out of Git while still making the container runnable.
+The container creates the synthetic dataset and trains the local model before starting the API. Generated artifacts remain outside Git.
 
-## CI
+## Validation Results
 
-GitHub Actions is configured in `.github/workflows/ci.yml` to run:
+Latest local validation:
 
-- dependency installation with `uv`;
-- lint with Ruff;
-- tests with Pytest;
-- a lightweight train/evaluation smoke run.
+| Check | Result |
+| --- | ---: |
+| Pytest | 7 passed |
+| Ruff | passed |
+| Real OpenML benchmark | completed |
+| Generated data committed | no |
+| Generated reports committed | no |
+
+The OpenML CSV is stored locally at `data/openml_creditcard.csv` and ignored by Git. The JSON benchmark report is stored locally at `reports/openml_creditcard_benchmark.json` and ignored by Git.
 
 ## Repository Layout
 
 ```text
-src/fraudrisk_engine/   package source
-scripts/                dataset, training, and evaluation commands
-tests/                  automated tests
-data/                   generated local dataset
-models/                 generated local model artifact
-reports/                generated local metrics and sample predictions
-docs/                   technical notes
+docs/                  model notes, benchmark results, and scope notes
+scripts/               dataset, training, benchmark, and report commands
+src/fraudrisk_engine/  package source
+tests/                 unit and integration tests
+data/                  generated local datasets, ignored by Git
+models/                generated model artifacts, ignored by Git
+reports/               generated local reports, ignored by Git
 ```
 
-## External References
+## Publication Notes
 
-The implementation is original. The project direction was informed by public references such as:
+Before publishing:
 
+- keep `data/`, `models/`, and `reports/` out of Git;
+- verify the CI badge repository path if the GitHub repository name changes;
+- run `uv run pytest` and `uv run ruff check .`;
+- include `MODEL_CARD.md` in the repository root.
+
+## Roadmap
+
+### Phase 1: Backend MVP
+
+Status: implemented.
+
+- Synthetic data generator.
+- Baseline model training.
+- FastAPI scoring endpoint.
+- Local tests and CI.
+
+### Phase 2: Real Fraud Benchmark
+
+Status: implemented.
+
+- OpenML/Kaggle ULB dataset ingestion.
+- Temporal split benchmark.
+- Fixed-review-budget metrics.
+- Benchmark documentation.
+
+### Phase 3: Explainability And Portfolio Polish
+
+Status: partial.
+
+- SHAP global summary.
+- Model card.
+- README publication pass.
+- Per-transaction SHAP explanations.
+- More realistic business feature dataset.
+
+### Phase 4: Production Hardening
+
+Status: planned.
+
+- Authentication.
+- Monitoring.
+- Batch scoring.
+- Model registry.
+- Drift checks.
+- PostgreSQL-backed audit trail.
+
+## References
+
+- OpenML credit-card fraud dataset: https://www.openml.org/d/42175
+- Kaggle ULB credit-card fraud dataset: https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud
 - Fraud Detection Handbook: https://github.com/Fraud-Detection-Handbook/fraud-detection-handbook
 - PyOD: https://github.com/yzhao062/pyod
 - Amazon Fraud Dataset Benchmark: https://github.com/amazon-science/fraud-dataset-benchmark
 - scikit-learn documentation: https://scikit-learn.org/
 
-No external repository code is copied into this project.
-
-## Roadmap
-
-- Add model-card notes for the OpenML/Kaggle ULB benchmark.
-- Tune XGBoost with cross-validation and class-imbalance controls.
-- Expand SHAP from global summary to per-transaction local explanations in the API.
-- Add anomaly detection baselines with PyOD.
-- Add MLflow experiment tracking.
-- Add model cards and fairness/error analysis.
+License and reuse notes are documented in `docs/reuse_and_license.md`.
