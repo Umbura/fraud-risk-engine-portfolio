@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -24,6 +26,10 @@ class TransactionScoreRequest(BaseModel):
     channel: str
 
 
+class StoredTransactionScoreRequest(TransactionScoreRequest):
+    transaction_id: str | None = Field(default=None, min_length=1, max_length=120)
+
+
 class ReasonCode(BaseModel):
     feature: str
     value: float | int | str
@@ -39,6 +45,34 @@ class TransactionScoreResponse(BaseModel):
     high_risk_threshold: float
     reason_codes: list[ReasonCode]
     model_name: str
+
+
+class StoredTransactionScoreResponse(TransactionScoreResponse):
+    transaction_id: str
+    stored: bool = True
+
+
+class ReviewDecisionRequest(BaseModel):
+    review_decision: Literal["fraud", "legitimate", "needs_more_info"]
+    reviewer: str = Field(default="manual_review", min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class ReviewedTransactionResponse(BaseModel):
+    transaction_id: str
+    fraud_probability: float
+    decision: str
+    model_name: str
+    created_at: str
+    reviewed_at: str | None
+    review_decision: str | None
+    reviewer: str | None
+    review_notes: str | None
+
+
+class PendingReviewResponse(BaseModel):
+    items: list[ReviewedTransactionResponse]
+    count: int
 
 
 class HealthResponse(BaseModel):

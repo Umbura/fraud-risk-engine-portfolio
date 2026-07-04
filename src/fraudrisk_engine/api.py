@@ -5,17 +5,24 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import joblib
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query, status
 
 from fraudrisk_engine.explain import reason_codes
 from fraudrisk_engine.schemas import (
     HealthResponse,
+    PendingReviewResponse,
+    ReviewDecisionRequest,
+    ReviewedTransactionResponse,
+    StoredTransactionScoreRequest,
+    StoredTransactionScoreResponse,
     TransactionScoreRequest,
     TransactionScoreResponse,
 )
+from fraudrisk_engine.storage import TransactionStore
 from fraudrisk_engine.training import decision_from_probability
 
 
@@ -61,12 +68,41 @@ def score_transaction(artifact: dict[str, Any], record: dict[str, Any]) -> Trans
     )
 
 
-def create_app(model_path: str | Path | None = None) -> FastAPI:
+def model_version(artifact: dict[str, Any]) -> str:
+    metadata = artifact.get("metadata", {})
+    best_model = metadata.get("best_model", "unknown_model")
+    seed = metadata.get("seed", "unknown_seed")
+    return f"{best_model}:seed={seed}"
+
+
+def reviewed_transaction_response(record: dict[str, Any]) -> ReviewedTransactionResponse:
+    return ReviewedTransactionResponse(
+        transaction_id=record["transaction_id"],
+        fraud_probability=record["fraud_probability"],
+        decision=record["decision"],
+        model_name=record["model_name"],
+        created_at=record["created_at"],
+        reviewed_at=record["reviewed_at"],
+        review_decision=record["review_decision"],
+        reviewer=record["reviewer"],
+        review_notes=record["review_notes"],
+    )
+
+
+def create_app(
+    model_path: str | Path | None = None,
+    database_path: str | Path | None = None,
+) -> FastAPI:
     runtime_model_path = model_path or os.getenv(
         "FRAUDRISK_MODEL_PATH",
         "models/fraud_model.joblib",
     )
+    runtime_database_path = database_path or os.getenv(
+        "FRAUDRISK_DB_PATH",
+        "data/fraudrisk.sqlite",
+    )
     store = ModelStore(runtime_model_path)
+    transaction_store = TransactionStore(runtime_database_path)
     app = FastAPI(
         title="FraudRisk Engine",
         version="0.1.0",
@@ -86,6 +122,53 @@ def create_app(model_path: str | Path | None = None) -> FastAPI:
     def score(payload: TransactionScoreRequest) -> TransactionScoreResponse:
         artifact = store.load()
         return score_transaction(artifact, payload.model_dump())
+
+    @app.post("/transactions/score", response_model=StoredTransactionScoreResponse)
+    def score_and_store(payload: StoredTransactionScoreRequest) -> StoredTransactionScoreResponse:
+        artifact = store.load()
+        transaction_id = payload.transaction_id or f"txn_{uuid4().hex}"
+        record = payload.model_dump(exclude={"transaction_id"})
+        score_response = score_transaction(artifact, record)
+        score_payload = score_response.model_dump()
+        try:
+            transaction_store.insert_score(
+                transaction_id=transaction_id,
+                payload=record,
+                score=score_payload,
+                model_version=model_version(artifact),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        return StoredTransactionScoreResponse(
+            transaction_id=transaction_id,
+            **score_payload,
+        )
+
+    @app.get("/reviews/pending", response_model=PendingReviewResponse)
+    def pending_reviews(
+        limit: int = Query(default=50, ge=1, le=500),
+    ) -> PendingReviewResponse:
+        records = transaction_store.list_pending_reviews(limit=limit)
+        items = [reviewed_transaction_response(record) for record in records]
+        return PendingReviewResponse(items=items, count=len(items))
+
+    @app.post("/reviews/{transaction_id}/decision", response_model=ReviewedTransactionResponse)
+    def review_decision(
+        transaction_id: str,
+        payload: ReviewDecisionRequest,
+    ) -> ReviewedTransactionResponse:
+        record = transaction_store.record_review_decision(
+            transaction_id=transaction_id,
+            review_decision=payload.review_decision,
+            reviewer=payload.reviewer,
+            notes=payload.notes,
+        )
+        if record is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Transaction not found: {transaction_id}",
+            )
+        return reviewed_transaction_response(record)
 
     return app
 

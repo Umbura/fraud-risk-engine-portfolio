@@ -108,10 +108,16 @@ Inappropriate uses:
 
 ## Operational Notes
 
-Production hardening would require:
+Implemented operational controls:
+
+- SQLite persistence for scored transactions;
+- pending-review queue;
+- manual review decision endpoint;
+- batch scoring with CSV output and JSON summary.
+
+Production hardening would still require:
 
 - authentication;
-- audit logging;
 - model monitoring;
 - threshold governance;
 - drift checks;

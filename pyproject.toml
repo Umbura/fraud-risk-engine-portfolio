@@ -25,6 +25,7 @@ boosting = [
   "xgboost>=2.1",
 ]
 dev = [
+  "httpx2>=0.28",
   "pytest>=8.0",
   "ruff>=0.6",
 ]

@@ -2,13 +2,13 @@
 
 Backend for fraud-risk scoring, operational review prioritization, and transaction decision support.
 
-The system trains baseline machine learning models, selects review thresholds on validation data, exposes a FastAPI scoring endpoint, and returns decision labels for financial transactions. It includes a reproducible synthetic dataset for API demonstrations and a real OpenML/Kaggle ULB credit-card fraud benchmark for model validation.
+The system trains baseline machine learning models, selects review thresholds on validation data, exposes FastAPI scoring endpoints, persists scored transactions in SQLite, supports manual review decisions, and returns decision labels for financial transactions. It includes a reproducible synthetic dataset for API demonstrations and a real OpenML/Kaggle ULB credit-card fraud benchmark for model validation.
 
 The default workflow does not require paid APIs, private datasets, Kaggle credentials, or copied external repository code.
 
 ## Overview
 
-The project separates data generation, model training, threshold selection, benchmark evaluation, API scoring, and validation reports. The backend owns the scoring contract and maps fraud probabilities to operational decisions:
+The project separates data generation, model training, threshold selection, benchmark evaluation, API scoring, review persistence, and validation reports. The backend owns the scoring contract and maps fraud probabilities to operational decisions:
 
 - `approve` for low-risk transactions;
 - `review` for transactions above the review threshold;
@@ -25,6 +25,9 @@ The synthetic dataset is used for reproducible local API behavior and readable r
 - Real OpenML/Kaggle ULB credit-card fraud benchmark.
 - Fixed-review-budget benchmark metrics.
 - FastAPI backend with health and scoring endpoints.
+- SQLite persistence for scored transactions.
+- Pending-review queue and manual review endpoint.
+- Batch CSV scoring with operational summary report.
 - Human-readable reason codes for synthetic transaction features.
 - Optional SHAP summary report.
 - Dockerfile for local container execution.
@@ -65,6 +68,7 @@ Controls included in this repository:
 - explicit fraud-base-rate reporting;
 - generated artifacts excluded from Git;
 - no secrets required for the default workflow.
+- SQLite audit trail for scored transactions and review outcomes.
 
 The OpenML benchmark uses anonymized PCA features (`V1` to `V28`). It is suitable for fraud-detection metrics, but not for business-readable explanations.
 
@@ -89,8 +93,13 @@ Endpoints:
 
 - `GET /health`
 - `POST /score`
+- `POST /transactions/score`
+- `GET /reviews/pending`
+- `POST /reviews/{transaction_id}/decision`
 
-Example request:
+`POST /score` returns a stateless score. `POST /transactions/score` calculates the same score and stores the transaction, score, decision, model version, reason codes, and review status in SQLite.
+
+Example stateless request:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/score \
@@ -136,6 +145,18 @@ Example response:
 }
 ```
 
+Example review decision:
+
+```bash
+curl -X POST http://127.0.0.1:8000/reviews/txn_001/decision \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"review_decision\": \"fraud\",
+    \"reviewer\": \"analyst\",
+    \"notes\": \"Confirmed during manual review.\"
+  }"
+```
+
 ## Local Commands
 
 Install dependencies:
@@ -173,6 +194,15 @@ uv run python scripts/fetch_openml_creditcard.py
 uv run python scripts/benchmark_openml_creditcard.py --include-xgboost
 ```
 
+Score a CSV batch:
+
+```bash
+uv run python scripts/score_batch.py \
+  --input data/transactions.csv \
+  --output reports/batch_scores.csv \
+  --summary reports/batch_summary.json
+```
+
 Generate a SHAP report:
 
 ```bash
@@ -197,13 +227,13 @@ Latest local validation:
 
 | Check | Result |
 | --- | ---: |
-| Pytest | 7 passed |
+| Pytest | 8 passed, 1 skipped in minimal environment |
 | Ruff | passed |
 | Real OpenML benchmark | completed |
 | Generated data committed | no |
 | Generated reports committed | no |
 
-The OpenML CSV is stored locally at `data/openml_creditcard.csv` and ignored by Git. The JSON benchmark report is stored locally at `reports/openml_creditcard_benchmark.json` and ignored by Git.
+The OpenML CSV is stored locally at `data/openml_creditcard.csv` and ignored by Git. SQLite databases, model artifacts, and generated reports are also ignored by Git.
 
 ## Repository Layout
 
@@ -235,6 +265,9 @@ Status: implemented.
 - Synthetic data generator.
 - Baseline model training.
 - FastAPI scoring endpoint.
+- SQLite persistence.
+- Manual review workflow.
+- Batch scoring.
 - Local tests and CI.
 
 ### Phase 2: Real Fraud Benchmark
@@ -248,11 +281,15 @@ Status: implemented.
 
 ### Phase 3: Explainability And Portfolio Polish
 
-Status: partial.
+Status: implemented for portfolio scope.
 
 - SHAP global summary.
 - Model card.
 - README publication pass.
+- Case study.
+
+Remaining optional work:
+
 - Per-transaction SHAP explanations.
 - More realistic business feature dataset.
 
@@ -262,7 +299,6 @@ Status: planned.
 
 - Authentication.
 - Monitoring.
-- Batch scoring.
 - Model registry.
 - Drift checks.
 - PostgreSQL-backed audit trail.
