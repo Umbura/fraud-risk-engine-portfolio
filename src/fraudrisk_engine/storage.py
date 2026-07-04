@@ -149,6 +149,44 @@ class TransactionStore:
             return None
         return self._row_to_record(row)
 
+    def operational_summary(self) -> dict[str, Any]:
+        with self._connect() as connection:
+            totals = connection.execute(
+                """
+                SELECT
+                    COUNT(*) AS total_transactions,
+                    AVG(fraud_probability) AS average_fraud_probability,
+                    MAX(fraud_probability) AS max_fraud_probability,
+                    SUM(CASE WHEN decision = 'approve' THEN 1 ELSE 0 END) AS approved,
+                    SUM(CASE WHEN decision = 'review' THEN 1 ELSE 0 END) AS review,
+                    SUM(CASE WHEN decision = 'block' THEN 1 ELSE 0 END) AS blocked,
+                    SUM(CASE WHEN reviewed_at IS NULL AND decision IN ('review', 'block') THEN 1 ELSE 0 END) AS pending_reviews,
+                    SUM(CASE WHEN reviewed_at IS NOT NULL THEN 1 ELSE 0 END) AS completed_reviews,
+                    SUM(CASE WHEN review_decision = 'fraud' THEN 1 ELSE 0 END) AS confirmed_fraud,
+                    SUM(CASE WHEN review_decision = 'legitimate' THEN 1 ELSE 0 END) AS confirmed_legitimate,
+                    SUM(CASE WHEN review_decision = 'needs_more_info' THEN 1 ELSE 0 END) AS needs_more_info
+                FROM scored_transactions
+                """
+            ).fetchone()
+
+        return {
+            "total_transactions": int(totals["total_transactions"] or 0),
+            "average_fraud_probability": float(totals["average_fraud_probability"] or 0.0),
+            "max_fraud_probability": float(totals["max_fraud_probability"] or 0.0),
+            "decision_counts": {
+                "approve": int(totals["approved"] or 0),
+                "review": int(totals["review"] or 0),
+                "block": int(totals["blocked"] or 0),
+            },
+            "pending_reviews": int(totals["pending_reviews"] or 0),
+            "completed_reviews": int(totals["completed_reviews"] or 0),
+            "review_decision_counts": {
+                "fraud": int(totals["confirmed_fraud"] or 0),
+                "legitimate": int(totals["confirmed_legitimate"] or 0),
+                "needs_more_info": int(totals["needs_more_info"] or 0),
+            },
+        }
+
     @staticmethod
     def _row_to_record(row: sqlite3.Row) -> dict[str, Any]:
         return {

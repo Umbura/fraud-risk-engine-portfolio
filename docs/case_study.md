@@ -16,6 +16,8 @@ The system:
 - stores scored transactions in SQLite;
 - exposes a pending-review queue;
 - accepts manual review decisions;
+- exposes transaction audit records;
+- summarizes operational metrics;
 - supports batch CSV scoring;
 - documents performance on a real public fraud dataset.
 
@@ -40,6 +42,10 @@ Model scoring pipeline
                  +--> /reviews/pending
                  |
                  +--> /reviews/{transaction_id}/decision
+                 |
+                 +--> /transactions/{transaction_id}
+                 |
+                 +--> /metrics/summary
 ```
 
 ## Modeling
@@ -94,6 +100,7 @@ In this context, precision is interpreted together with recall and review rate.
 - FastAPI was used for a clear scoring contract.
 - SQLite was used to keep the portfolio project simple and reproducible.
 - Pydantic validates transaction payloads before scoring.
+- Transaction lookup and summary endpoints make the scoring workflow auditable.
 - Generated data, model artifacts, reports, and SQLite files are excluded from Git.
 - CI runs linting, tests, and a lightweight training smoke run.
 - The real benchmark is separated from the API model because the real dataset uses anonymized PCA features.

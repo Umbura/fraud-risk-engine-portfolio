@@ -62,17 +62,32 @@ class ReviewedTransactionResponse(BaseModel):
     transaction_id: str
     fraud_probability: float
     decision: str
+    review_threshold: float | None = None
+    high_risk_threshold: float | None = None
     model_name: str
+    model_version: str | None = None
     created_at: str
     reviewed_at: str | None
     review_decision: str | None
     reviewer: str | None
     review_notes: str | None
+    payload: dict[str, float | int | str] | None = None
+    reason_codes: list[ReasonCode] | None = None
 
 
 class PendingReviewResponse(BaseModel):
     items: list[ReviewedTransactionResponse]
     count: int
+
+
+class OperationalSummaryResponse(BaseModel):
+    total_transactions: int
+    average_fraud_probability: float
+    max_fraud_probability: float
+    decision_counts: dict[str, int]
+    pending_reviews: int
+    completed_reviews: int
+    review_decision_counts: dict[str, int]
 
 
 class HealthResponse(BaseModel):

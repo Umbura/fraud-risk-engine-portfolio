@@ -117,11 +117,26 @@ def test_operational_review_workflow(tmp_path: Path) -> None:
     duplicate_response = client.post("/transactions/score", json=_payload())
     assert duplicate_response.status_code == 409
 
+    transaction_response = client.get("/transactions/txn_test_001")
+    assert transaction_response.status_code == 200
+    transaction_body = transaction_response.json()
+    assert transaction_body["transaction_id"] == "txn_test_001"
+    assert transaction_body["payload"]["amount"] == 850.0
+    assert transaction_body["model_version"] == "always_risky:seed=1"
+    assert transaction_body["reason_codes"]
+
     pending_response = client.get("/reviews/pending")
     assert pending_response.status_code == 200
     pending_body = pending_response.json()
     assert pending_body["count"] == 1
     assert pending_body["items"][0]["transaction_id"] == "txn_test_001"
+
+    summary_response = client.get("/metrics/summary")
+    assert summary_response.status_code == 200
+    summary_body = summary_response.json()
+    assert summary_body["total_transactions"] == 1
+    assert summary_body["decision_counts"]["block"] == 1
+    assert summary_body["pending_reviews"] == 1
 
     review_response = client.post(
         "/reviews/txn_test_001/decision",
@@ -137,6 +152,10 @@ def test_operational_review_workflow(tmp_path: Path) -> None:
     assert reviewed_body["reviewer"] == "analyst"
 
     assert client.get("/reviews/pending").json()["count"] == 0
+    final_summary = client.get("/metrics/summary").json()
+    assert final_summary["completed_reviews"] == 1
+    assert final_summary["review_decision_counts"]["fraud"] == 1
+    assert client.get("/transactions/unknown").status_code == 404
 
 
 def test_score_batch_writes_scores_and_summary(tmp_path: Path) -> None:

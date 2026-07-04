@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Query, status
 from fraudrisk_engine.explain import reason_codes
 from fraudrisk_engine.schemas import (
     HealthResponse,
+    OperationalSummaryResponse,
     PendingReviewResponse,
     ReviewDecisionRequest,
     ReviewedTransactionResponse,
@@ -80,12 +81,17 @@ def reviewed_transaction_response(record: dict[str, Any]) -> ReviewedTransaction
         transaction_id=record["transaction_id"],
         fraud_probability=record["fraud_probability"],
         decision=record["decision"],
+        review_threshold=record["review_threshold"],
+        high_risk_threshold=record["high_risk_threshold"],
         model_name=record["model_name"],
+        model_version=record["model_version"],
         created_at=record["created_at"],
         reviewed_at=record["reviewed_at"],
         review_decision=record["review_decision"],
         reviewer=record["reviewer"],
         review_notes=record["review_notes"],
+        payload=record["payload"],
+        reason_codes=record["reason_codes"],
     )
 
 
@@ -151,6 +157,20 @@ def create_app(
         records = transaction_store.list_pending_reviews(limit=limit)
         items = [reviewed_transaction_response(record) for record in records]
         return PendingReviewResponse(items=items, count=len(items))
+
+    @app.get("/transactions/{transaction_id}", response_model=ReviewedTransactionResponse)
+    def get_transaction(transaction_id: str) -> ReviewedTransactionResponse:
+        record = transaction_store.get_transaction(transaction_id)
+        if record is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Transaction not found: {transaction_id}",
+            )
+        return reviewed_transaction_response(record)
+
+    @app.get("/metrics/summary", response_model=OperationalSummaryResponse)
+    def metrics_summary() -> OperationalSummaryResponse:
+        return OperationalSummaryResponse(**transaction_store.operational_summary())
 
     @app.post("/reviews/{transaction_id}/decision", response_model=ReviewedTransactionResponse)
     def review_decision(

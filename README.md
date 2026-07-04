@@ -94,10 +94,14 @@ Endpoints:
 - `GET /health`
 - `POST /score`
 - `POST /transactions/score`
+- `GET /transactions/{transaction_id}`
 - `GET /reviews/pending`
 - `POST /reviews/{transaction_id}/decision`
+- `GET /metrics/summary`
 
 `POST /score` returns a stateless score. `POST /transactions/score` calculates the same score and stores the transaction, score, decision, model version, reason codes, and review status in SQLite.
+
+`GET /transactions/{transaction_id}` returns the audit record for a scored transaction. `GET /metrics/summary` returns operational totals for scored transactions, pending reviews, completed reviews, and manual review outcomes.
 
 Example stateless request:
 
