@@ -1,8 +1,8 @@
 # FraudRisk Engine [![CI](https://github.com/Umbura/fraud-risk-engine-portfolio/actions/workflows/ci.yml/badge.svg)](https://github.com/Umbura/fraud-risk-engine-portfolio/actions/workflows/ci.yml)
 
-Backend for fraud-risk scoring, operational review prioritization, and transaction decision support.
+Backend for fraud-risk scoring, operational review prioritization, transaction audit, and data-drift monitoring.
 
-The system trains baseline machine learning models, selects review thresholds on validation data, exposes FastAPI scoring endpoints, persists scored transactions in SQLite, supports manual review decisions, and returns decision labels for financial transactions. It includes a reproducible synthetic dataset for API demonstrations and a real OpenML/Kaggle ULB credit-card fraud benchmark for model validation.
+The system trains baseline machine learning models, selects review thresholds on validation data, exposes optionally authenticated FastAPI scoring endpoints, persists scored transactions in SQLite, supports manual review decisions, and monitors distribution shifts with PSI. It includes a reproducible synthetic dataset for API demonstrations and a real OpenML/Kaggle ULB credit-card fraud benchmark for model validation.
 
 The default workflow does not require paid APIs, private datasets, Kaggle credentials, or copied external repository code.
 
@@ -29,6 +29,9 @@ The synthetic dataset is used for reproducible local API behavior and readable r
 - Pending-review queue and manual review endpoint.
 - Batch CSV scoring with operational summary report.
 - Human-readable reason codes for synthetic transaction features.
+- Optional API-key authentication for operational endpoints.
+- PSI drift monitoring for feature and score distributions.
+- End-to-end local workflow demonstration.
 - Optional SHAP summary report.
 - Dockerfile for local container execution.
 - Pytest test suite and Ruff linting.
@@ -67,8 +70,11 @@ Controls included in this repository:
 - temporal holdout evaluation for the real benchmark;
 - explicit fraud-base-rate reporting;
 - generated artifacts excluded from Git;
-- no secrets required for the default workflow.
-- SQLite audit trail for scored transactions and review outcomes.
+- no secrets required for the default workflow;
+- SQLite audit trail for scored transactions and review outcomes;
+- optional API-key protection using constant-time comparison;
+- minimum sample requirement before assigning an overall drift status;
+- feature and score distribution monitoring against the validation reference profile.
 
 The OpenML benchmark uses anonymized PCA features (`V1` to `V28`). It is suitable for fraud-detection metrics, but not for business-readable explanations.
 
@@ -98,16 +104,25 @@ Endpoints:
 - `GET /reviews/pending`
 - `POST /reviews/{transaction_id}/decision`
 - `GET /metrics/summary`
+- `GET /monitoring/drift`
 
 `POST /score` returns a stateless score. `POST /transactions/score` calculates the same score and stores the transaction, score, decision, model version, reason codes, and review status in SQLite.
 
-`GET /transactions/{transaction_id}` returns the audit record for a scored transaction. `GET /metrics/summary` returns operational totals for scored transactions, pending reviews, completed reviews, and manual review outcomes.
+`GET /transactions/{transaction_id}` returns the audit record for a scored transaction. `GET /metrics/summary` returns operational totals for scored transactions, pending reviews, completed reviews, and manual review outcomes. `GET /monitoring/drift` compares recent persisted transactions with the validation reference profile and reports PSI by feature. The default minimum is 200 recent records; below that volume, the overall status is `insufficient_data`.
+
+Authentication is disabled for the default local workflow. Set `FRAUDRISK_API_KEY` to protect every endpoint except `/health` and include the value in the `X-API-Key` header. Swagger exposes an `Authorize` control when the API is open in `/docs`.
+
+```powershell
+$env:FRAUDRISK_API_KEY = "local-demo-key"
+uv run uvicorn fraudrisk_engine.api:app --reload
+```
 
 Example stateless request:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/score \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: local-demo-key" \
   -d "{
     \"amount\": 850.0,
     \"account_age_days\": 12,
@@ -154,6 +169,7 @@ Example review decision:
 ```bash
 curl -X POST http://127.0.0.1:8000/reviews/txn_001/decision \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: local-demo-key" \
   -d "{
     \"review_decision\": \"fraud\",
     \"reviewer\": \"analyst\",
@@ -214,13 +230,21 @@ uv sync --extra explain
 uv run python scripts/write_shap_report.py --max-rows 100
 ```
 
+Run the complete scoring, persistence, review, metrics, and drift workflow:
+
+```bash
+uv run python scripts/demo_workflow.py
+```
+
+The result is printed to the terminal and written to `reports/demo_workflow.json`.
+
 ## Docker
 
 Build and run the API container:
 
 ```bash
 docker build -t fraudrisk-engine .
-docker run --rm -p 8000:8000 fraudrisk-engine
+docker run --rm -p 8000:8000 -e FRAUDRISK_API_KEY=local-demo-key fraudrisk-engine
 ```
 
 The container creates the synthetic dataset and trains the local model before starting the API. Generated artifacts remain outside Git.
@@ -231,7 +255,7 @@ Latest local validation:
 
 | Check | Result |
 | --- | ---: |
-| Pytest | 8 passed, 1 skipped in minimal environment |
+| Pytest | 11 passed, 1 skipped in minimal environment |
 | Ruff | passed |
 | Real OpenML benchmark | completed |
 | Generated data committed | no |
@@ -251,14 +275,9 @@ models/                generated model artifacts, ignored by Git
 reports/               generated local reports, ignored by Git
 ```
 
-## Publication Notes
+## Project Status
 
-Before publishing:
-
-- keep `data/`, `models/`, and `reports/` out of Git;
-- verify the CI badge repository path if the GitHub repository name changes;
-- run `uv run pytest` and `uv run ruff check .`;
-- include `MODEL_CARD.md` in the repository root.
+Version `1.0.0` completes the intended portfolio scope. Generated datasets, model artifacts, reports, and SQLite files remain outside Git. The repository includes the model card, reproducible commands, CI, an end-to-end demo, a real benchmark, operational review endpoints, access control, and drift checks.
 
 ## Roadmap
 
@@ -292,20 +311,17 @@ Status: implemented for portfolio scope.
 - README publication pass.
 - Case study.
 
-Remaining optional work:
+### Phase 4: Portfolio Hardening
 
-- Per-transaction SHAP explanations.
-- More realistic business feature dataset.
+Status: implemented for portfolio scope.
 
-### Phase 4: Production Hardening
+- Optional API-key authentication.
+- PSI drift monitoring for stored transactions.
+- Health endpoint and Docker health check.
+- Model-versioned SQLite audit trail.
+- End-to-end workflow demonstration.
 
-Status: planned.
-
-- Authentication.
-- Monitoring.
-- Model registry.
-- Drift checks.
-- PostgreSQL-backed audit trail.
+Large-scale production deployment remains outside the project scope. It would require centralized identity and RBAC, managed PostgreSQL, infrastructure telemetry, a model registry, privacy controls, incident response, and governed retraining.
 
 ## References
 

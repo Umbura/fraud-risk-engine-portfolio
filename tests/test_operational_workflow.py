@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from fraudrisk_engine.api import create_app
 from fraudrisk_engine.batch import score_batch
 from fraudrisk_engine.data import FEATURE_COLUMNS
+from fraudrisk_engine.monitoring import build_monitoring_reference
 
 
 class AlwaysRiskyModel:
@@ -66,13 +67,22 @@ def _reference_stats() -> dict[str, dict[str, float]]:
 
 
 def _write_fake_model(path: Path) -> None:
+    reference_frame = pd.DataFrame([_payload()])
     artifact = {
         "model": AlwaysRiskyModel(),
         "feature_columns": FEATURE_COLUMNS,
         "threshold": 0.30,
         "high_risk_threshold": 0.70,
         "reference_stats": _reference_stats(),
-        "metadata": {"best_model": "always_risky", "seed": 1},
+        "monitoring_reference": build_monitoring_reference(
+            reference_frame,
+            np.array([0.9]),
+        ),
+        "metadata": {
+            "artifact_version": "1.0",
+            "best_model": "always_risky",
+            "seed": 1,
+        },
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(artifact, path)
@@ -138,6 +148,13 @@ def test_operational_review_workflow(tmp_path: Path) -> None:
     assert summary_body["decision_counts"]["block"] == 1
     assert summary_body["pending_reviews"] == 1
 
+    drift_response = client.get("/monitoring/drift?min_samples=1")
+    assert drift_response.status_code == 200
+    drift_body = drift_response.json()
+    assert drift_body["status"] == "stable"
+    assert drift_body["sample_size"] == 1
+    assert drift_body["model_version"] == "always_risky:seed=1"
+
     review_response = client.post(
         "/reviews/txn_test_001/decision",
         json={
@@ -156,6 +173,38 @@ def test_operational_review_workflow(tmp_path: Path) -> None:
     assert final_summary["completed_reviews"] == 1
     assert final_summary["review_decision_counts"]["fraud"] == 1
     assert client.get("/transactions/unknown").status_code == 404
+
+
+def test_api_key_protects_operational_endpoints(tmp_path: Path) -> None:
+    model_path = tmp_path / "model.joblib"
+    database_path = tmp_path / "fraudrisk.sqlite"
+    _write_fake_model(model_path)
+    client = TestClient(
+        create_app(
+            model_path=model_path,
+            database_path=database_path,
+            api_key="test-secret",
+        )
+    )
+
+    health_response = client.get("/health")
+    assert health_response.status_code == 200
+    assert health_response.json()["authentication_enabled"] is True
+    assert client.post("/score", json=_payload()).status_code == 401
+    assert (
+        client.post(
+            "/score",
+            json=_payload(),
+            headers={"X-API-Key": "wrong-secret"},
+        ).status_code
+        == 401
+    )
+    authorized = client.post(
+        "/score",
+        json=_payload(),
+        headers={"X-API-Key": "test-secret"},
+    )
+    assert authorized.status_code == 200
 
 
 def test_score_batch_writes_scores_and_summary(tmp_path: Path) -> None:

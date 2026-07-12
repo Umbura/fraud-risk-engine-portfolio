@@ -103,8 +103,8 @@ Inappropriate uses:
 - Precision can look low even when the review queue is materially better than random sampling.
 - Real benchmark features are anonymized and do not support intuitive business explanations.
 - The synthetic API model and the real benchmark model serve different purposes.
-- No live drift monitoring is implemented.
-- No authentication or authorization is included in the portfolio API.
+- Drift monitoring uses PSI on recent records persisted by the portfolio API; it is not a substitute for production telemetry or alerting.
+- API-key authentication is a minimal portfolio control and does not provide user identity, roles, or key rotation.
 
 ## Operational Notes
 
@@ -113,14 +113,16 @@ Implemented operational controls:
 - SQLite persistence for scored transactions;
 - pending-review queue;
 - manual review decision endpoint;
-- batch scoring with CSV output and JSON summary.
+- batch scoring with CSV output and JSON summary;
+- optional API-key protection for operational endpoints;
+- feature and score drift reports with a configurable minimum sample size.
 
 Production hardening would still require:
 
-- authentication;
-- model monitoring;
+- centralized authentication and role-based authorization;
+- external service and model monitoring;
 - threshold governance;
-- drift checks;
+- governed drift alerts and response procedures;
 - reviewer feedback loop;
 - incident handling process;
 - periodic retraining;

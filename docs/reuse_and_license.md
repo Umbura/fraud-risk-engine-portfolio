@@ -27,9 +27,9 @@ Generated local artifacts are ignored by Git:
 
 Reference projects are listed in the README for context. They informed the project direction but were not used as copied code sources.
 
-## Publication Checklist
+## Publication Validation
 
-Before publishing:
+The published repository should continue to satisfy these checks:
 
 - run the test suite;
 - run Ruff;

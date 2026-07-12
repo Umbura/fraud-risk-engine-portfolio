@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import joblib
+
 from fraudrisk_engine.data import write_dataset
 from fraudrisk_engine.training import train_and_evaluate
 
@@ -24,3 +26,8 @@ def test_train_and_evaluate_creates_model_and_metrics(tmp_path: Path) -> None:
     assert 0.05 <= report["threshold"] <= 0.95
     assert report["test_metrics"]["roc_auc"] >= 0.70
     assert report["sanity_checks"]["uses_target_as_feature"] is False
+
+    artifact = joblib.load(model)
+    assert artifact["metadata"]["artifact_version"] == "1.0"
+    assert artifact["monitoring_reference"]["reference_rows"] == 240
+    assert "fraud_probability" in artifact["monitoring_reference"]["features"]

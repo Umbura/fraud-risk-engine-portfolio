@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import os
+import secrets
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import joblib
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi.security import APIKeyHeader
 
+from fraudrisk_engine import __version__
 from fraudrisk_engine.explain import reason_codes
+from fraudrisk_engine.monitoring import evaluate_drift
 from fraudrisk_engine.schemas import (
+    DriftReportResponse,
     HealthResponse,
     OperationalSummaryResponse,
     PendingReviewResponse,
@@ -98,6 +103,7 @@ def reviewed_transaction_response(record: dict[str, Any]) -> ReviewedTransaction
 def create_app(
     model_path: str | Path | None = None,
     database_path: str | Path | None = None,
+    api_key: str | None = None,
 ) -> FastAPI:
     runtime_model_path = model_path or os.getenv(
         "FRAUDRISK_MODEL_PATH",
@@ -107,11 +113,26 @@ def create_app(
         "FRAUDRISK_DB_PATH",
         "data/fraudrisk.sqlite",
     )
+    runtime_api_key = api_key if api_key is not None else os.getenv("FRAUDRISK_API_KEY", "")
     store = ModelStore(runtime_model_path)
     transaction_store = TransactionStore(runtime_database_path)
+    api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+    def require_api_key(
+        provided_key: str | None = Depends(api_key_header),
+    ) -> None:
+        if runtime_api_key and (
+            provided_key is None or not secrets.compare_digest(provided_key, runtime_api_key)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="A valid X-API-Key header is required.",
+                headers={"WWW-Authenticate": "ApiKey"},
+            )
+
     app = FastAPI(
         title="FraudRisk Engine",
-        version="0.1.0",
+        version=__version__,
         description="Fraud, risk, and anomaly scoring backend with operational reason codes.",
     )
 
@@ -122,14 +143,23 @@ def create_app(
             status="ok",
             model_path=str(path),
             model_loaded=path.exists(),
+            authentication_enabled=bool(runtime_api_key),
         )
 
-    @app.post("/score", response_model=TransactionScoreResponse)
+    @app.post(
+        "/score",
+        response_model=TransactionScoreResponse,
+        dependencies=[Depends(require_api_key)],
+    )
     def score(payload: TransactionScoreRequest) -> TransactionScoreResponse:
         artifact = store.load()
         return score_transaction(artifact, payload.model_dump())
 
-    @app.post("/transactions/score", response_model=StoredTransactionScoreResponse)
+    @app.post(
+        "/transactions/score",
+        response_model=StoredTransactionScoreResponse,
+        dependencies=[Depends(require_api_key)],
+    )
     def score_and_store(payload: StoredTransactionScoreRequest) -> StoredTransactionScoreResponse:
         artifact = store.load()
         transaction_id = payload.transaction_id or f"txn_{uuid4().hex}"
@@ -150,7 +180,11 @@ def create_app(
             **score_payload,
         )
 
-    @app.get("/reviews/pending", response_model=PendingReviewResponse)
+    @app.get(
+        "/reviews/pending",
+        response_model=PendingReviewResponse,
+        dependencies=[Depends(require_api_key)],
+    )
     def pending_reviews(
         limit: int = Query(default=50, ge=1, le=500),
     ) -> PendingReviewResponse:
@@ -158,7 +192,11 @@ def create_app(
         items = [reviewed_transaction_response(record) for record in records]
         return PendingReviewResponse(items=items, count=len(items))
 
-    @app.get("/transactions/{transaction_id}", response_model=ReviewedTransactionResponse)
+    @app.get(
+        "/transactions/{transaction_id}",
+        response_model=ReviewedTransactionResponse,
+        dependencies=[Depends(require_api_key)],
+    )
     def get_transaction(transaction_id: str) -> ReviewedTransactionResponse:
         record = transaction_store.get_transaction(transaction_id)
         if record is None:
@@ -168,11 +206,43 @@ def create_app(
             )
         return reviewed_transaction_response(record)
 
-    @app.get("/metrics/summary", response_model=OperationalSummaryResponse)
+    @app.get(
+        "/metrics/summary",
+        response_model=OperationalSummaryResponse,
+        dependencies=[Depends(require_api_key)],
+    )
     def metrics_summary() -> OperationalSummaryResponse:
         return OperationalSummaryResponse(**transaction_store.operational_summary())
 
-    @app.post("/reviews/{transaction_id}/decision", response_model=ReviewedTransactionResponse)
+    @app.get(
+        "/monitoring/drift",
+        response_model=DriftReportResponse,
+        dependencies=[Depends(require_api_key)],
+    )
+    def monitoring_drift(
+        limit: int = Query(default=1000, ge=1, le=10000),
+        min_samples: int = Query(default=200, ge=1, le=10000),
+    ) -> DriftReportResponse:
+        artifact = store.load()
+        reference = artifact.get("monitoring_reference")
+        if reference is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Monitoring profile not found. Retrain the model to generate it.",
+            )
+        records = transaction_store.list_monitoring_records(limit=limit)
+        report = evaluate_drift(reference, records, min_samples=min_samples)
+        return DriftReportResponse(
+            **report,
+            model_name=artifact["metadata"]["best_model"],
+            model_version=model_version(artifact),
+        )
+
+    @app.post(
+        "/reviews/{transaction_id}/decision",
+        response_model=ReviewedTransactionResponse,
+        dependencies=[Depends(require_api_key)],
+    )
     def review_decision(
         transaction_id: str,
         payload: ReviewDecisionRequest,

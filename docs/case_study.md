@@ -18,6 +18,8 @@ The system:
 - accepts manual review decisions;
 - exposes transaction audit records;
 - summarizes operational metrics;
+- protects operational endpoints with an optional API key;
+- compares recent feature and score distributions with a validation reference profile;
 - supports batch CSV scoring;
 - documents performance on a real public fraud dataset.
 
@@ -46,6 +48,8 @@ Model scoring pipeline
                  +--> /transactions/{transaction_id}
                  |
                  +--> /metrics/summary
+                 |
+                 +--> /monitoring/drift
 ```
 
 ## Modeling
@@ -101,24 +105,25 @@ In this context, precision is interpreted together with recall and review rate.
 - SQLite was used to keep the portfolio project simple and reproducible.
 - Pydantic validates transaction payloads before scoring.
 - Transaction lookup and summary endpoints make the scoring workflow auditable.
+- Optional API-key authentication provides a minimal access-control boundary for the demo.
+- PSI monitoring detects feature and score distribution shifts after a minimum sample is reached.
 - Generated data, model artifacts, reports, and SQLite files are excluded from Git.
 - CI runs linting, tests, and a lightweight training smoke run.
 - The real benchmark is separated from the API model because the real dataset uses anonymized PCA features.
 
 ## Limitations
 
-- No authentication.
-- No production monitoring.
-- No drift detection.
+- API-key authentication does not provide user roles, identity federation, or automated rotation.
+- Drift checks use records in the local SQLite store and do not provide infrastructure telemetry or alert delivery.
 - No live feedback loop for retraining.
 - SQLite is suitable for a portfolio demo, not high-volume production traffic.
 - Business-readable explanations are available for the synthetic API model, not for the anonymized OpenML benchmark features.
 
 ## Next Production Steps
 
-- Add authentication and role-based access control.
+- Replace the static API key with centralized authentication and role-based access control.
 - Add PostgreSQL-backed audit tables.
-- Add drift monitoring and score-distribution checks.
+- Export drift and service metrics to a monitored observability platform.
 - Add batch review export for analysts.
 - Add reviewer feedback into a retraining dataset.
 - Add per-transaction SHAP explanations for supported models.

@@ -1,39 +1,37 @@
-# MVP Scope
+# Completed Portfolio Scope
 
-Date: 2026-07-02
+Version: 1.0.0
 
 ## Goal
 
-Build a partial but publishable backend for fraud, risk, and anomaly scoring.
+Deliver a reproducible fraud-risk backend that demonstrates modeling, API design, operational review, auditability, monitoring, and evaluation on a real imbalanced dataset.
 
-## What Is Included
+## Included
 
-- Synthetic dataset generation.
-- Lightweight supervised fraud model.
-- Operational threshold selection.
-- Reason-code explanations.
-- FastAPI scoring endpoint.
-- Tests and lint.
-- Reproducible local commands with `uv`.
+- Synthetic data generation with readable business features.
+- Logistic regression, random forest, and optional XGBoost training.
+- Validation-based review and high-risk thresholds.
+- Real OpenML/Kaggle ULB credit-card fraud benchmark with temporal holdout.
+- FastAPI stateless and persisted scoring.
+- SQLite audit records, review queue, and manual review decisions.
+- Batch CSV scoring and operational summaries.
+- Reason codes and optional SHAP global explanations.
+- Optional API-key authentication.
+- PSI drift monitoring for input features and model scores.
+- Docker execution, automated tests, linting, and GitHub Actions CI.
+- End-to-end local demonstration script.
 
-## What Is Not Included Yet
+## Deliberately Outside Scope
 
-- Real bank or card data.
-- Paid APIs.
-- Heavy model downloads.
-- XGBoost.
-- SHAP.
-- PyOD.
-- MLflow.
+- Real-time payment-network integration.
+- Automatic movement, blocking, or reversal of funds.
+- Centralized identity, RBAC, and secret rotation.
+- Managed PostgreSQL, distributed queues, and high-availability deployment.
+- Production telemetry, paging, incident response, and retraining orchestration.
+- Compliance, privacy, and fairness certification.
+
+These items require organizational infrastructure and governance. Their absence does not prevent the repository from meeting its intended portfolio scope.
 
 ## Reuse Policy
 
-This project does not copy code from reference repositories. It reuses common project structure patterns and public ML concepts only:
-
-- `pyproject.toml` and `uv` project management.
-- `src/` package layout.
-- scripts for dataset/training/evaluation.
-- README-first portfolio documentation.
-- public metric conventions for fraud detection.
-
-External references are cited in the README and should be used for study or future extensions, not as pasted source code.
+The implementation is original. External repositories and public datasets are cited as references; external source code was not copied into the project.

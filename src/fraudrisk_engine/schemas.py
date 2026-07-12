@@ -90,7 +90,30 @@ class OperationalSummaryResponse(BaseModel):
     review_decision_counts: dict[str, int]
 
 
+class DriftFeatureResponse(BaseModel):
+    feature: str
+    kind: Literal["numeric", "categorical"]
+    psi: float
+    status: Literal["stable", "warning", "drift"]
+    missing_rate: float
+    buckets: list[str]
+    expected_proportions: list[float]
+    observed_proportions: list[float]
+
+
+class DriftReportResponse(BaseModel):
+    status: Literal["stable", "warning", "drift", "insufficient_data"]
+    sample_size: int
+    minimum_sample_size: int
+    reference_rows: int
+    generated_at: str
+    model_name: str
+    model_version: str
+    features: list[DriftFeatureResponse]
+
+
 class HealthResponse(BaseModel):
     status: str
     model_path: str
     model_loaded: bool
+    authentication_enabled: bool

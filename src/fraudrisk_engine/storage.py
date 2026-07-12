@@ -149,6 +149,27 @@ class TransactionStore:
             return None
         return self._row_to_record(row)
 
+    def list_monitoring_records(self, limit: int = 1000) -> list[dict[str, Any]]:
+        """Return recent payloads and scores for distribution monitoring."""
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT payload_json, fraud_probability
+                FROM scored_transactions
+                ORDER BY created_at DESC, transaction_id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "payload": json.loads(row["payload_json"]),
+                "fraud_probability": float(row["fraud_probability"]),
+            }
+            for row in rows
+        ]
+
     def operational_summary(self) -> dict[str, Any]:
         with self._connect() as connection:
             totals = connection.execute(

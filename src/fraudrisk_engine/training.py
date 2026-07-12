@@ -33,6 +33,7 @@ from fraudrisk_engine.data import (
     TARGET_COLUMN,
 )
 from fraudrisk_engine.explain import build_reference_stats, reason_codes
+from fraudrisk_engine.monitoring import build_monitoring_reference
 
 
 @dataclass(frozen=True)
@@ -299,6 +300,7 @@ def train_and_evaluate(
     best_threshold = float(leaderboard[0]["threshold"])
     high_risk_threshold = float(min(0.95, max(best_threshold + 0.25, best_threshold * 1.75)))
 
+    validation_probabilities = _probabilities(best_model, validation)
     test_probabilities = _probabilities(best_model, test)
     test_metrics = classification_metrics(test[TARGET_COLUMN], test_probabilities, best_threshold)
     test_predictions = (test_probabilities >= best_threshold).astype(int)
@@ -310,7 +312,12 @@ def train_and_evaluate(
         "threshold": best_threshold,
         "high_risk_threshold": high_risk_threshold,
         "reference_stats": build_reference_stats(train),
+        "monitoring_reference": build_monitoring_reference(
+            validation,
+            validation_probabilities,
+        ),
         "metadata": {
+            "artifact_version": "1.0",
             "best_model": best_name,
             "seed": seed,
             "train_rows": int(len(train)),
