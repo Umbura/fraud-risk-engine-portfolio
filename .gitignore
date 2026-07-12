@@ -16,6 +16,7 @@ reports/*.json
 reports/*.csv
 reports/*.txt
 reports/*.log
+reports/*.html
 
 # Local configuration and secrets
 .env

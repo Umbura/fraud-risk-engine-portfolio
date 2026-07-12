@@ -1,63 +1,76 @@
-# FraudRisk Engine [![CI](https://github.com/Umbura/fraud-risk-engine-portfolio/actions/workflows/ci.yml/badge.svg)](https://github.com/Umbura/fraud-risk-engine-portfolio/actions/workflows/ci.yml)
+# FraudRisk Engine
 
-Backend for fraud-risk scoring, operational review prioritization, transaction audit, and data-drift monitoring.
+[![CI](https://github.com/Umbura/fraud-risk-engine-portfolio/actions/workflows/ci.yml/badge.svg)](https://github.com/Umbura/fraud-risk-engine-portfolio/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Umbura/fraud-risk-engine-portfolio)](https://github.com/Umbura/fraud-risk-engine-portfolio/releases/tag/v1.0.0)
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688)
+[![License](https://img.shields.io/badge/License-MIT-20242a)](LICENSE)
 
-The system trains baseline machine learning models, selects review thresholds on validation data, exposes optionally authenticated FastAPI scoring endpoints, persists scored transactions in SQLite, supports manual review decisions, and monitors distribution shifts with PSI. It includes a reproducible synthetic dataset for API demonstrations and a real OpenML/Kaggle ULB credit-card fraud benchmark for model validation.
+Fraud-risk scoring backend for operational review prioritization, transaction audit, and data-drift monitoring.
 
-The default workflow does not require paid APIs, private datasets, Kaggle credentials, or copied external repository code.
+The service turns validated transaction features into a fraud probability, an operational decision, and human-readable reason codes. It combines a reproducible local workflow with evaluation on a real, heavily imbalanced public fraud dataset.
 
-## Overview
+<p align="center">
+  <img src="docs/assets/api-overview.png" alt="FraudRisk Engine FastAPI endpoints" width="100%">
+</p>
 
-The project separates data generation, model training, threshold selection, benchmark evaluation, API scoring, review persistence, and validation reports. The backend owns the scoring contract and maps fraud probabilities to operational decisions:
+## Key Capabilities
 
-- `approve` for low-risk transactions;
-- `review` for transactions above the review threshold;
-- `block` for transactions above the high-risk threshold.
+- **Risk scoring API:** FastAPI contracts for stateless and persisted transaction scoring.
+- **Operational decisions:** Validation-selected thresholds map scores to `approve`, `review`, or `block`.
+- **Human review workflow:** Prioritized queue, audit lookup, reviewer decision, and operational metrics.
+- **Explainability:** Readable reason codes for business features and an optional global SHAP report.
+- **Monitoring and access control:** PSI drift checks plus optional `X-API-Key` protection.
+- **Reproducible evaluation:** Synthetic API data, temporal real-data benchmark, Docker, tests, and CI.
 
-The synthetic dataset is used for reproducible local API behavior and readable reason codes. The OpenML benchmark is used to test the modeling approach on real, highly imbalanced fraud data.
+The default workflow requires no paid API, private dataset, or Kaggle credentials.
 
-## Implemented Scope
+## Proven Results
 
-- Synthetic transaction dataset generator.
-- Logistic regression, random forest, and optional XGBoost training.
-- Validation-based threshold selection.
-- Operational cost report for the synthetic dataset.
-- Real OpenML/Kaggle ULB credit-card fraud benchmark.
-- Fixed-review-budget benchmark metrics.
-- FastAPI backend with health and scoring endpoints.
-- SQLite persistence for scored transactions.
-- Pending-review queue and manual review endpoint.
-- Batch CSV scoring with operational summary report.
-- Human-readable reason codes for synthetic transaction features.
-- Optional API-key authentication for operational endpoints.
-- PSI drift monitoring for feature and score distributions.
-- End-to-end local workflow demonstration.
-- Optional SHAP summary report.
-- Dockerfile for local container execution.
-- Pytest test suite and Ruff linting.
-- GitHub Actions CI.
+### Real Fraud Benchmark
 
-## Benchmark Results
+<p align="center">
+  <img src="docs/assets/benchmark-results.png" alt="OpenML credit card fraud benchmark results" width="100%">
+</p>
 
-Latest real benchmark: OpenML/Kaggle ULB credit-card fraud dataset.
+On the temporal holdout from the OpenML/Kaggle ULB dataset, XGBoost caught `44` of `52` fraud cases while sending only `0.817%` of transactions to review. The resulting queue was approximately `103x` richer in fraud than the test base rate.
 
-| Metric | Value |
-| --- | ---: |
-| Dataset size | 284,807 transactions |
-| Fraud cases | 492 |
-| Fraud base rate | 0.173% |
-| Split | temporal, by `Time` |
-| Selected model | XGBoost |
-| Test ROC-AUC | 0.9762 |
-| Test PR-AUC | 0.7609 |
-| Review rate | 0.817% |
-| Frauds caught | 44 / 52 |
-| Recall | 0.8462 |
-| Precision | 0.1261 |
+Detailed methodology and limitations are documented in [the benchmark report](docs/openml_creditcard_results_2026-07-02.md).
 
-Interpretation: at a sub-1% review rate on the temporal holdout set, the model identified 84.6% of fraud cases. Precision is low in absolute terms because the test fraud base rate is 0.122%, but the review queue is materially richer than random selection.
+### End-to-End Operational Run
 
-Detailed benchmark results are documented in `docs/openml_creditcard_results_2026-07-02.md`.
+<p align="center">
+  <img src="docs/assets/operational-results.png" alt="FraudRisk Engine operational scoring and drift results" width="100%">
+</p>
+
+The reproducible demo scored and persisted `251` transactions, populated the review queue, recorded a manual decision, returned audit metrics, and completed the PSI check with a global `stable` status.
+
+## Quick Start
+
+```bash
+uv sync --extra dev --extra api
+uv run python scripts/create_dataset.py
+uv run python scripts/train_model.py
+uv run uvicorn fraudrisk_engine.api:app --reload
+```
+
+Open the interactive API at `http://127.0.0.1:8000/docs`.
+
+Run the complete scoring, persistence, review, metrics, and drift demonstration:
+
+```bash
+uv run python scripts/demo_workflow.py
+```
+
+## Decision Model
+
+The project separates data generation, model training, threshold selection, benchmark evaluation, API scoring, review persistence, and monitoring. Fraud probabilities are mapped to:
+
+- `approve` below the review threshold;
+- `review` at or above the review threshold;
+- `block` at or above the high-risk threshold.
+
+The synthetic dataset supports readable local behavior and reason codes. The OpenML benchmark independently tests the modeling approach on real fraud labels.
 
 ## Safety Model
 
@@ -80,20 +93,7 @@ The OpenML benchmark uses anonymized PCA features (`V1` to `V28`). It is suitabl
 
 ## API
 
-Start the local API:
-
-```bash
-uv sync --extra dev --extra api
-uv run python scripts/create_dataset.py
-uv run python scripts/train_model.py
-uv run uvicorn fraudrisk_engine.api:app --reload
-```
-
-Open:
-
-```text
-http://127.0.0.1:8000/docs
-```
+The interactive OpenAPI contract documents every request and response schema.
 
 Endpoints:
 
