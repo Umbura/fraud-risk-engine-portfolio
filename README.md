@@ -1,7 +1,7 @@
 # FraudRisk Engine
 
 [![CI](https://github.com/Umbura/fraud-risk-engine-portfolio/actions/workflows/ci.yml/badge.svg)](https://github.com/Umbura/fraud-risk-engine-portfolio/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/Umbura/fraud-risk-engine-portfolio)](https://github.com/Umbura/fraud-risk-engine-portfolio/releases/tag/v1.0.0)
+[![Release](https://img.shields.io/github/v/release/Umbura/fraud-risk-engine-portfolio)](https://github.com/Umbura/fraud-risk-engine-portfolio/releases/latest)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688)
 [![License](https://img.shields.io/badge/License-MIT-20242a)](LICENSE)
@@ -19,6 +19,7 @@ The service turns validated transaction features into a fraud probability, an op
 - **Risk scoring API:** FastAPI contracts for stateless and persisted transaction scoring.
 - **Operational decisions:** Validation-selected thresholds map scores to `approve`, `review`, or `block`.
 - **Human review workflow:** Prioritized queue, audit lookup, reviewer decision, and operational metrics.
+- **Value-aware evaluation:** Review-budget curves report fraud-case recall, fraud-value recall, precision, and lift.
 - **Explainability:** Readable reason codes for business features and an optional global SHAP report.
 - **Monitoring and access control:** PSI drift checks plus optional `X-API-Key` protection.
 - **Reproducible evaluation:** Synthetic API data, temporal real-data benchmark, Docker, tests, and CI.
@@ -33,9 +34,15 @@ The default workflow requires no paid API, private dataset, or Kaggle credential
   <img src="docs/assets/benchmark-results.png" alt="OpenML credit card fraud benchmark results" width="100%">
 </p>
 
-On the temporal holdout from the OpenML/Kaggle ULB dataset, XGBoost caught `44` of `52` fraud cases while sending only `0.817%` of transactions to review. The resulting queue was approximately `103x` richer in fraud than the test base rate.
+On the temporal holdout from the OpenML/Kaggle ULB dataset, XGBoost caught `44` of `52` fraud cases and `78.0%` of the fraud transaction amount while sending only `0.817%` of transactions to review. The resulting queue was `103.6x` richer in fraud than the test base rate.
 
-Detailed methodology and limitations are documented in [the benchmark report](docs/openml_creditcard_results_2026-07-02.md).
+<p align="center">
+  <img src="docs/assets/openml-budget-analysis.png" alt="Fraud recall, fraud amount recall and lift across review budgets" width="100%">
+</p>
+
+Thresholds in this sensitivity analysis were selected on validation and evaluated on `42,722` unseen transactions. Increasing the actual review rate from `0.817%` to `1.727%` did not catch additional fraud in this holdout, exposing the operational point of diminishing returns.
+
+Detailed methodology and limitations are documented in [the benchmark report](docs/openml_creditcard_results_2026-07-12.md).
 
 ### End-to-End Operational Run
 
@@ -210,8 +217,10 @@ uv run python scripts/train_model.py --include-xgboost
 Run the real OpenML benchmark:
 
 ```bash
+uv sync --extra dev --extra boosting --extra analysis
 uv run python scripts/fetch_openml_creditcard.py
 uv run python scripts/benchmark_openml_creditcard.py --include-xgboost
+uv run python scripts/render_openml_analysis.py
 ```
 
 Score a CSV batch:
@@ -255,7 +264,7 @@ Latest local validation:
 
 | Check | Result |
 | --- | ---: |
-| Pytest | 11 passed, 1 skipped in minimal environment |
+| Pytest | 12 passed, 1 skipped in minimal environment |
 | Ruff | passed |
 | Real OpenML benchmark | completed |
 | Generated data committed | no |
@@ -277,7 +286,7 @@ reports/               generated local reports, ignored by Git
 
 ## Project Status
 
-Version `1.0.0` completes the intended portfolio scope. Generated datasets, model artifacts, reports, and SQLite files remain outside Git. The repository includes the model card, reproducible commands, CI, an end-to-end demo, a real benchmark, operational review endpoints, access control, and drift checks.
+Version `1.1.0` extends the completed portfolio scope with value-aware fraud metrics and validation-selected review-budget sensitivity analysis. Generated datasets, model artifacts, reports, and SQLite files remain outside Git.
 
 ## Roadmap
 

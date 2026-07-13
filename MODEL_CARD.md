@@ -74,6 +74,8 @@ Latest test result:
 | Reviewed transactions | 349 |
 | Review rate | 0.817% |
 | Frauds caught | 44 / 52 |
+| Fraud transaction amount captured | 77.99% |
+| Lift over holdout base rate | 103.58x |
 | Precision | 0.1261 |
 | Recall | 0.8462 |
 | F1 | 0.2195 |
@@ -101,6 +103,7 @@ Inappropriate uses:
 
 - Fraud labels are rare, so accuracy is not a useful success metric.
 - Precision can look low even when the review queue is materially better than random sampling.
+- Fraud-value recall measures the `Amount` associated with detected fraud labels; it is not a claim about prevented financial loss.
 - Real benchmark features are anonymized and do not support intuitive business explanations.
 - The synthetic API model and the real benchmark model serve different purposes.
 - Drift monitoring uses PSI on recent records persisted by the portfolio API; it is not a substitute for production telemetry or alerting.

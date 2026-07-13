@@ -91,6 +91,8 @@ Latest holdout result:
 | Review rate | 0.817% |
 | Frauds caught | 44 / 52 |
 | Recall | 0.8462 |
+| Fraud transaction amount recall | 0.7799 |
+| Lift over holdout base rate | 103.58x |
 | Precision | 0.1261 |
 
 ## Why Precision Is Low
@@ -98,6 +100,8 @@ Latest holdout result:
 Fraud is extremely rare in this benchmark. The test set fraud base rate is 0.122%, so a random review queue would be expected to find roughly 1 fraud per 820 reviewed transactions. The model found 44 frauds in 349 reviewed transactions.
 
 In this context, precision is interpreted together with recall and review rate.
+
+The validation-selected review-budget curve also showed diminishing returns. Increasing the actual test review rate from 0.817% to 1.727% did not capture additional fraud cases or additional fraud transaction amount. The `Amount` metric describes labeled transaction value, not prevented loss.
 
 ## Engineering Decisions
 

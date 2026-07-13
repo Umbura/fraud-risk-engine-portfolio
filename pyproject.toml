@@ -1,6 +1,6 @@
 [project]
 name = "fraudrisk-engine"
-version = "1.0.0"
+version = "1.1.0"
 description = "Fraud, risk, and anomaly scoring backend with operational thresholding and explainable reason codes."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
@@ -34,6 +34,9 @@ explain = [
 ]
 public-data = [
   "requests>=2.32",
+]
+analysis = [
+  "matplotlib>=3.9",
 ]
 
 [build-system]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -30,6 +31,7 @@ KAGGLE_CREDITCARD_URL = "https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud
 TARGET_COLUMN = "Class"
 FEATURE_COLUMNS = ["Time", *[f"V{idx}" for idx in range(1, 29)], "Amount"]
 REQUIRED_COLUMNS = [*FEATURE_COLUMNS, TARGET_COLUMN]
+DIAGNOSTIC_REVIEW_RATES = (0.001, 0.0025, 0.005, 0.01, 0.02, 0.05)
 
 
 def fetch_openml_creditcard(
@@ -86,6 +88,16 @@ def normalize_creditcard_frame(frame: pd.DataFrame) -> pd.DataFrame:
     return normalized.dropna().reset_index(drop=True)
 
 
+def file_sha256(path: str | Path, chunk_size: int = 1024 * 1024) -> str:
+    """Return a stable fingerprint for a local dataset artifact."""
+
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as file_handle:
+        for chunk in iter(lambda: file_handle.read(chunk_size), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def run_openml_creditcard_benchmark(
     dataset_path: str | Path,
     output_path: str | Path,
@@ -120,7 +132,12 @@ def run_openml_creditcard_benchmark(
 
         probabilities = model.predict_proba(validation[FEATURE_COLUMNS])[:, 1]
         threshold = threshold_for_review_rate(probabilities, review_rate=review_rate)
-        metrics = evaluate_threshold(validation[TARGET_COLUMN], probabilities, threshold)
+        metrics = evaluate_threshold(
+            validation[TARGET_COLUMN],
+            probabilities,
+            threshold,
+            validation["Amount"],
+        )
         leaderboard.append(
             {
                 "model": name,
@@ -145,14 +162,28 @@ def run_openml_creditcard_benchmark(
     )
     selected = leaderboard[0]
     selected_model = fitted_models[selected["model"]]
+    validation_probabilities = selected_model.predict_proba(validation[FEATURE_COLUMNS])[:, 1]
     test_probabilities = selected_model.predict_proba(test[FEATURE_COLUMNS])[:, 1]
-    test_metrics = evaluate_threshold(test[TARGET_COLUMN], test_probabilities, selected["threshold"])
+    test_metrics = evaluate_threshold(
+        test[TARGET_COLUMN],
+        test_probabilities,
+        selected["threshold"],
+        test["Amount"],
+    )
+    budget_analysis = review_budget_analysis(
+        validation[TARGET_COLUMN],
+        validation_probabilities,
+        test[TARGET_COLUMN],
+        test_probabilities,
+        test["Amount"],
+    )
 
     report = {
         "source": {
             "openml_data_id": OPENML_CREDITCARD_DATA_ID,
             "openml_url": OPENML_CREDITCARD_URL,
             "kaggle_reference_url": KAGGLE_CREDITCARD_URL,
+            "dataset_sha256": file_sha256(dataset_path),
             "warning": (
                 "This is a real public fraud dataset, but V1-V28 are anonymized PCA features. "
                 "It supports detection benchmarking better than business-readable reason codes."
@@ -175,6 +206,11 @@ def run_openml_creditcard_benchmark(
             "roc_auc": _safe_roc_auc(test[TARGET_COLUMN], test_probabilities),
             "pr_auc": float(average_precision_score(test[TARGET_COLUMN], test_probabilities)),
             **test_metrics,
+        },
+        "review_budget_analysis": budget_analysis,
+        "amount_analysis": {
+            "full_dataset": transaction_amount_summary(frame),
+            "test": transaction_amount_summary(test),
         },
         "feature_importance": feature_importance(selected_model),
         "sanity_checks": {
@@ -292,20 +328,26 @@ def evaluate_threshold(
     y_true: pd.Series,
     probabilities: np.ndarray,
     threshold: float,
+    amounts: pd.Series | np.ndarray | None = None,
 ) -> dict[str, Any]:
+    if len(y_true) != len(probabilities):
+        raise ValueError("Target and probability lengths do not match.")
     predictions = (probabilities >= threshold).astype(int)
     tn, fp, fn, tp = confusion_matrix(y_true, predictions, labels=[0, 1]).ravel()
     reviewed = int(predictions.sum())
     total_frauds = int(y_true.sum())
-    return {
+    fraud_base_rate = float(total_frauds / len(y_true))
+    precision = float(precision_score(y_true, predictions, zero_division=0))
+    result = {
         "threshold": float(threshold),
         "reviewed_transactions": reviewed,
         "review_rate": float(reviewed / len(y_true)),
         "frauds_caught": int(tp),
         "total_frauds": total_frauds,
-        "precision": float(precision_score(y_true, predictions, zero_division=0)),
+        "precision": precision,
         "recall": float(recall_score(y_true, predictions, zero_division=0)),
         "f1": float(f1_score(y_true, predictions, zero_division=0)),
+        "lift_over_base_rate": float(precision / fraud_base_rate) if fraud_base_rate else 0.0,
         "confusion_matrix": {
             "true_negative": int(tn),
             "false_positive": int(fp),
@@ -313,6 +355,75 @@ def evaluate_threshold(
             "true_positive": int(tp),
         },
     }
+    if amounts is not None:
+        labels = y_true.to_numpy(dtype=int)
+        amount_values = np.asarray(amounts, dtype=float)
+        if len(amount_values) != len(labels):
+            raise ValueError("Target and amount lengths do not match.")
+        fraud_amount = float(amount_values[labels == 1].sum())
+        captured_fraud_amount = float(
+            amount_values[(labels == 1) & (predictions == 1)].sum()
+        )
+        result.update(
+            {
+                "total_fraud_amount": fraud_amount,
+                "captured_fraud_amount": captured_fraud_amount,
+                "fraud_amount_recall": (
+                    float(captured_fraud_amount / fraud_amount) if fraud_amount else 0.0
+                ),
+            }
+        )
+    return result
+
+
+def review_budget_analysis(
+    validation_target: pd.Series,
+    validation_probabilities: np.ndarray,
+    test_target: pd.Series,
+    test_probabilities: np.ndarray,
+    test_amounts: pd.Series | np.ndarray,
+    review_rates: tuple[float, ...] = DIAGNOSTIC_REVIEW_RATES,
+) -> list[dict[str, Any]]:
+    """Evaluate validation-selected thresholds across operational review budgets."""
+
+    if len(validation_target) != len(validation_probabilities):
+        raise ValueError("Validation target and probability lengths do not match.")
+    analysis = []
+    for target_review_rate in review_rates:
+        threshold = threshold_for_review_rate(
+            validation_probabilities,
+            review_rate=target_review_rate,
+        )
+        metrics = evaluate_threshold(
+            test_target,
+            test_probabilities,
+            threshold,
+            test_amounts,
+        )
+        analysis.append(
+            {
+                "target_review_rate": float(target_review_rate),
+                **metrics,
+            }
+        )
+    return analysis
+
+
+def transaction_amount_summary(frame: pd.DataFrame) -> dict[str, Any]:
+    """Summarize transaction amounts by observed class."""
+
+    summary: dict[str, Any] = {}
+    for label, name in ((0, "legitimate"), (1, "fraud")):
+        amounts = frame.loc[frame[TARGET_COLUMN] == label, "Amount"].astype(float)
+        summary[name] = {
+            "transactions": int(len(amounts)),
+            "total_amount": float(amounts.sum()),
+            "mean_amount": float(amounts.mean()),
+            "median_amount": float(amounts.median()),
+            "p90_amount": float(amounts.quantile(0.90)),
+            "max_amount": float(amounts.max()),
+        }
+    return summary
 
 
 def dataset_summary(frame: pd.DataFrame) -> dict[str, Any]:
