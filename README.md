@@ -1,7 +1,7 @@
 # FraudRisk Engine
 
-[![CI](https://github.com/Umbura/fraud-risk-engine-portfolio/actions/workflows/ci.yml/badge.svg)](https://github.com/Umbura/fraud-risk-engine-portfolio/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/Umbura/fraud-risk-engine-portfolio)](https://github.com/Umbura/fraud-risk-engine-portfolio/releases/latest)
+[![CI](https://github.com/Umbura/fraud-risk-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/Umbura/fraud-risk-engine/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Umbura/fraud-risk-engine)](https://github.com/Umbura/fraud-risk-engine/releases/latest)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688)
 [![License](https://img.shields.io/badge/License-MIT-20242a)](LICENSE)
